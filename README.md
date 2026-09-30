@@ -34,13 +34,13 @@ dsh plugin --profile web add -w link:/absolute/path/to/dsh-turn-delete
 从 GitHub 安装（私有仓库需要本机已有对应凭据）：
 
 ```sh
-dsh plugin --profile web add github:TiJun-Prime/dsh-turn-delete-dev
+dsh plugin --profile web add github:TiJun-Prime/dsh-turn-delete
 ```
 
 从预构建的 GitHub Release 安装（发布 Release 之后可用）：
 
 ```sh
-dsh plugin --profile web add https://github.com/TiJun-Prime/dsh-turn-delete-dev/releases/latest/download/dsh-turn-delete.tgz
+dsh plugin --profile web add https://github.com/TiJun-Prime/dsh-turn-delete/releases/latest/download/dsh-turn-delete.tgz
 ```
 
 安装后重启 `dsh web`（桌面版重启应用）。卸载：

@@ -35,13 +35,13 @@ dsh plugin --profile web add -w link:/absolute/path/to/dsh-turn-delete
 From GitHub (a private repository needs credentials on the machine):
 
 ```sh
-dsh plugin --profile web add github:TiJun-Prime/dsh-turn-delete-dev
+dsh plugin --profile web add github:TiJun-Prime/dsh-turn-delete
 ```
 
 From a prebuilt GitHub Release (once a release exists):
 
 ```sh
-dsh plugin --profile web add https://github.com/TiJun-Prime/dsh-turn-delete-dev/releases/latest/download/dsh-turn-delete.tgz
+dsh plugin --profile web add https://github.com/TiJun-Prime/dsh-turn-delete/releases/latest/download/dsh-turn-delete.tgz
 ```
 
 Restart `dsh web` after installation (restart the desktop app on a desktop shell). To remove it:

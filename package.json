@@ -37,12 +37,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/TiJun-Prime/dsh-turn-delete-dev.git"
+    "url": "git+https://github.com/TiJun-Prime/dsh-turn-delete.git"
   },
   "bugs": {
-    "url": "https://github.com/TiJun-Prime/dsh-turn-delete-dev/issues"
+    "url": "https://github.com/TiJun-Prime/dsh-turn-delete/issues"
   },
-  "homepage": "https://github.com/TiJun-Prime/dsh-turn-delete-dev#readme",
+  "homepage": "https://github.com/TiJun-Prime/dsh-turn-delete#readme",
   "publishConfig": {
     "access": "public"
   },
