@@ -1,5 +1,5 @@
 import type { ConversationNodeDefinition } from '@deepseek-ai/dsh-client-ui-conversation/client'
-import { TOMBSTONE_MODEL, TOMBSTONE_PLUGIN, TOMBSTONE_PROVIDER } from '../shared.ts'
+import { SYSTEM_PROMPT_SOURCE_KIND, TOMBSTONE_MODEL, TOMBSTONE_PLUGIN, TOMBSTONE_PROVIDER } from '../shared.ts'
 
 export interface DeletedTurnData {
   readonly hidden: true
@@ -33,10 +33,11 @@ interface TombstoneLikeEvent {
  * Read the deleted turn from a deletion tombstone, or `undefined` for any other
  * event.
  *
- * Two generations exist: DSH 0.1.5+ writes an empty `system/message` replacement
- * (turn on the event payload, plugin identity in `source.plugin`), while older
- * logs hold an empty `assistant/message` replacement (model/provider identity).
- * Both must stay hidden, so both are recognized.
+ * Three generations exist: format v4 (DSH 0.2.x) forces `system-prompt` on every
+ * system message, so there an empty system replacement *is* the tombstone; format
+ * v3 (DSH 0.1.5+) writes an empty `system/message` with our identity in
+ * `source.plugin`; older logs hold an empty `assistant/message` replacement with
+ * model/provider identity. All must stay hidden, so all are recognized.
  */
 function deletedTurn(event: TombstoneLikeEvent): number | undefined {
   if (event.type !== 'system/message' && event.type !== 'assistant/message') return undefined
@@ -46,7 +47,8 @@ function deletedTurn(event: TombstoneLikeEvent): number | undefined {
   const source = message.source
   if (source === undefined) return undefined
   const tombstone = event.type === 'system/message'
-    ? source.kind === 'plugin' && source.plugin === TOMBSTONE_PLUGIN
+    ? source.kind === SYSTEM_PROMPT_SOURCE_KIND
+      || (source.kind === 'plugin' && source.plugin === TOMBSTONE_PLUGIN)
     : source.provider === TOMBSTONE_PROVIDER && source.model === TOMBSTONE_MODEL
   if (!tombstone) return undefined
   return typeof event.data?.turn === 'number' ? event.data.turn : undefined

@@ -5,16 +5,18 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createAssistantMessage, createSystemMessage, MessageId } from '@deepseek-ai/dsh-llm'
 import { concealDeletedTurn, concealTurnFromAction } from '../src/client/DeletedTurnMarker.tsx'
+import { FallbackTrashIcon, resolveTrashIcon, TrashIcon } from '../src/client/trash-icon.tsx'
 import { TurnDeleteAction, type DeleteTurnResponse } from '../src/client/TurnDeleteAction.tsx'
 import { zh } from '../src/client/locales.ts'
-import { turnDeletionDefinition } from '../src/client/turn-deletion.ts'
+import { selectDeletedTurn, turnDeletionDefinition } from '../src/client/turn-deletion.ts'
+import { apply } from '../src/client/index.tsx'
 
 vi.mock('@deepseek-ai/dsh-client-ui-primitives', async () => {
   const React = await import('react')
   return {
     Button: ({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
       React.createElement('button', props, children),
-    IconTrashOutline16: () => React.createElement('span', null, 'trash'),
+    IconTrashOutlineRegular: () => React.createElement('span', null, 'trash'),
     Tooltip: ({ children }: { children: React.ReactNode }) => children,
     Modal: ({ open, title, description, footer, children }: {
       open: boolean
@@ -124,6 +126,49 @@ describe('deleted turn presentation', () => {
   })
 })
 
+describe('client registration', () => {
+  function registerAll() {
+    const registrations: Array<{ name: string; id?: string; order?: number; select?: unknown }> = []
+    const ctx = {
+      effect: (body: () => void | (() => void)) => { body() },
+      locale: { register: () => () => {} },
+      uiConversation: { events: { register: () => () => {} } },
+      slots: {
+        register: (options: { name: string; id?: string; order?: number; select?: unknown }) => {
+          registrations.push(options)
+          return () => {}
+        },
+        inject: (_name: string, callback: () => () => void) => { callback(); return () => {} },
+      },
+    }
+    apply(ctx as never)
+    return registrations
+  }
+
+  // DSH 0.2.0-rc.1's slot core throws `list slot "<name>" requires options.id`
+  // for a list seat registered without one. The throw fails the plugin's whole
+  // `apply`, so the delete action silently disappears together with the tail.
+  it('gives every list-slot registration the id DSH 0.2.0-rc.1 requires', () => {
+    const list = registerAll().filter(entry =>
+      entry.name === 'conversation.chat.assistant-actions' || entry.name === 'conversation.chat.turnTail')
+    expect(list.map(entry => entry.name).sort()).toEqual([
+      'conversation.chat.assistant-actions',
+      'conversation.chat.turnTail',
+    ])
+    for (const entry of list) expect(typeof entry.id).toBe('string')
+  })
+
+  it('keeps selecting the deleted turn through the turn location data', () => {
+    const entry = registerAll().find(row => row.name === 'conversation.chat.turnTail')
+    expect(entry?.select).toBe(selectDeletedTurn)
+
+    const deleted = { turn: { data: { get: () => ({ hidden: true as const, turn: 3 }) } } }
+    expect(selectDeletedTurn(deleted as never)).toEqual({ hidden: true, turn: 3 })
+    const live = { turn: { data: { get: () => undefined } } }
+    expect(selectDeletedTurn(live as never)).toBeNull()
+  })
+})
+
 const t = (key: keyof typeof zh): string => zh[key]
 
 function mountAction(result: DeleteTurnResponse = { ok: true, value: { turn: 1, seq: 9 } }) {
@@ -171,5 +216,30 @@ describe('TurnDeleteAction', () => {
       expect(alert).toContain(detail)
       expect(alert).not.toContain(zh['error.busy'])
     })
+  })
+})
+
+describe('trash icon resolution', () => {
+  it('prefers the 0.2.0-rc.1 stroke-variant names over the 0.1.x size suffix', () => {
+    const regular = () => null
+    const medium = () => null
+    const legacy = () => null
+    expect(resolveTrashIcon({ IconTrashOutlineRegular: regular, IconTrashOutline16: legacy })).toBe(regular)
+    expect(resolveTrashIcon({ IconTrashOutlineMedium: medium })).toBe(medium)
+    expect(resolveTrashIcon({ IconTrashOutline16: legacy })).toBe(legacy)
+  })
+
+  it('resolves nothing for a module without any known icon name', () => {
+    expect(resolveTrashIcon({})).toBeNull()
+    expect(resolveTrashIcon({ IconTrashOutline16: undefined })).toBeNull()
+    expect(resolveTrashIcon(null)).toBeNull()
+    expect(resolveTrashIcon(undefined)).toBeNull()
+    expect(resolveTrashIcon('IconTrashOutline16')).toBeNull()
+  })
+
+  it('resolves the icon exported by this build and renders the fallback glyph', () => {
+    expect(TrashIcon).not.toBeNull()
+    render(<FallbackTrashIcon />)
+    expect(document.querySelector('svg')).toBeTruthy()
   })
 })

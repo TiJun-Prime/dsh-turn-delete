@@ -4,7 +4,7 @@ English | [中文](README.md)
 
 Delete one complete closed turn from a DeepSeek Harness conversation without deleting or replacing the Session. The action appears beside the final assistant response for each completed top-level turn.
 
-> This repository is an **independent continuation** of [hanshenmesen/dsh-turn-delete](https://github.com/hanshenmesen/dsh-turn-delete). The upstream main branch has not merged this repository's compatibility fixes, so they are maintained here, tracking DeepSeek Harness `0.1.5-rc.2` surface rules.
+> This repository is an **independent continuation** of [hanshenmesen/dsh-turn-delete](https://github.com/hanshenmesen/dsh-turn-delete). The upstream main branch has not merged this repository's compatibility fixes, so they are maintained here, tracking DeepSeek Harness `0.1.5-rc.2` surface rules and the `0.2.0-rc.1` plugin compatibility gate.
 
 ## Demo
 
@@ -58,6 +58,19 @@ dsh plugin --profile web remove dsh-turn-delete
 4. **Immediate concealment** after a delete: the chat's turn-tail row is not re-rendered by a live append, so the action conceals its own turn's rows directly.
 5. **Tooling**: build/check scripts work on Windows (the `.bin` shim problem is fixed), and `npm run check` now smoke-tests the built host bundle against the real kernel through its HTTP route.
 
+## 0.2.1: the 0.2.0-rc.1 plugin compatibility gate
+
+Since DeepSeek Harness `0.2.0-rc.1`, profile startup runs `evaluatePluginCompatibility()` over every plugin's `peerDependencies`: each peer whose name is `@deepseek-ai/dsh` or starts with `@deepseek-ai/dsh-` must be satisfied by the running kernel version under semver with `includePrerelease: true`. A plugin that fails is **neither reported nor loaded** — its loader entry stays at `enabled: false`, the plugin manager shows "entered the profile bundle layer but could not be hot-mounted; effective after restart", and the kernel log contains no line about it at all.
+
+Two traps:
+
+- Declaring only the tested older version (for example `^0.1.5-rc.2`) evaluates to false on `0.2.0-rc.1`, so the plugin is simply not loaded.
+- Prerelease ranges are counter-intuitive: `>=0.1.5-rc.2 <0.3.0` also evaluates to false (no stable tuple exists inside that range). A union such as `^0.1.5-rc.2 || ^0.2.0-rc.1` is required.
+
+0.2.1 therefore declares `^0.1.5-rc.2 || ^0.2.0-rc.1` for all five `@deepseek-ai/dsh-*` peers, so one package serves both kernel lines; **no code change was needed** (surface events, the `system/message` shape, slot ids and the `data-turn-tail` / `data-chat-flow-kind` DOM contract were all verified unchanged on 0.2.0-rc.1).
+
+If the action disappears after a kernel upgrade, re-enable the plugin in the plugin manager (it writes a profile patch row and hot-mounts the plugin) or restart the app; 0.2.1 is accepted by the gate.
+
 ## Design
 
 The Host half registers `POST /dsh-turn-delete`: it claims the target Agent's maintenance lease, validates the complete closed-turn surface span, appends a durable replacement, and waits for `sessions.flush()` before acknowledging success. The replacement is an empty `system/message` carrying `surfaceOp: { op: 'replace', startSeq, endSeq }` plus the `sourceEventSeqs` it shadows.
@@ -66,9 +79,11 @@ The browser half contributes to the public `conversation.chat.assistant-actions`
 
 ## Compatibility
 
-- DeepSeek Harness `0.1.5-rc.2` (surface replacements use `{ op: 'replace', startSeq, endSeq }`)
+- DeepSeek Harness `0.1.5-rc.2` and `0.2.0-rc.1` (surface replacements use `{ op: 'replace', startSeq, endSeq }`)
 - Node.js 22.19 or newer
 - Web profile and Web-based desktop shells
+
+`peerDependencies` declares `^0.1.5-rc.2 || ^0.2.0-rc.1`. On a kernel version outside that range, Harness builds after `0.2.0-rc.1` refuse to load this plugin (see the section above); update the package, or grant an explicit per-version exemption for it in the plugin manager.
 
 DeepSeek Harness is in developer preview and changes its surface API between releases. After upgrading Harness, verify the plugin once with a disposable Session containing three short turns and delete the middle one.
 

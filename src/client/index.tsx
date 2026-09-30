@@ -39,6 +39,11 @@ export function apply(ctx: ClientContext): void {
   ctx.slots.inject('conversation.chat.turnTail', () =>
     ctx.slots.register({
       name: 'conversation.chat.turnTail',
+      // DSH 0.2.0-rc.1 made `id` mandatory for list slots: registering without
+      // one throws `list slot "<name>" requires options.id`, which fails this
+      // plugin's whole `apply` and silently removes the delete action above too.
+      id: 'turn-delete',
+      order: 50,
       select: selectDeletedTurn,
     }, DeletedTurnMarker))
 }

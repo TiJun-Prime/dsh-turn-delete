@@ -10,7 +10,7 @@ import { EventEmitter } from 'node:events'
 import { Context } from '@deepseek-ai/cordis'
 import { createAssistantMessage, createUserMessage, MessageId } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
-import { apply, isTurnDeleteEvent, TURN_DELETE_PATH } from '../lib/index.js'
+import { apply, isTurnDeleteEvent, tombstoneSource, TURN_DELETE_PATH } from '../lib/index.js'
 
 function assert(condition, message) {
   if (!condition) throw new Error(`smoke: ${message}`)
@@ -126,6 +126,12 @@ const tombstone = session.eventAt(payload.value.seq)
 assert(tombstone !== undefined && isTurnDeleteEvent(tombstone), 'tombstone event is not recognized')
 assert(tombstone.type === 'system/message', `tombstone type is ${tombstone.type}`)
 assert(tombstone.data.message.content.length === 0, 'tombstone content is not empty')
+const formatVersion = session.header?.version
+assert(
+  JSON.stringify(tombstone.data.message.source) === JSON.stringify(tombstoneSource(formatVersion)),
+  `tombstone source ${JSON.stringify(tombstone.data.message.source)}`
+    + ` does not match session format ${String(formatVersion)}`,
+)
 
 const texts = session.deriveMessages().flatMap(message => message.content)
   .filter(block => block.type === 'text').map(block => block.text)

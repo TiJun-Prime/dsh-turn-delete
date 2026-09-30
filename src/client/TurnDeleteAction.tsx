@@ -1,12 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import {
-  Button,
-  IconTrashOutline16,
-  Modal,
-  Tooltip,
-} from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, Modal, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { MessageId } from '@deepseek-ai/dsh-llm'
 import { concealTurnFromAction } from './DeletedTurnMarker.tsx'
+import { FallbackTrashIcon, TrashIcon } from './trash-icon.tsx'
 import type { TurnDeleteKey } from './locales.ts'
 
 export type DeleteTurnResponse =
@@ -123,7 +119,7 @@ export function TurnDeleteAction({ messageId, deleteTurn, useSession, t }: TurnD
           aria-disabled={running || undefined}
           onClick={running ? undefined : () => { setOpen(true); setError(null) }}
         >
-          <IconTrashOutline16 />
+          {TrashIcon === null ? <FallbackTrashIcon /> : <TrashIcon size={16} />}
         </button>
       </Tooltip>
       <Modal

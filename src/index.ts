@@ -5,6 +5,7 @@ export { TURN_DELETE_PATH } from './http.ts'
 export {
   deleteTurn,
   isTurnDeleteEvent,
+  tombstoneSource,
   TOMBSTONE_MODEL,
   TOMBSTONE_PROVIDER,
   TurnDeleteError,

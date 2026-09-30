@@ -3,9 +3,19 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createSystemMessage, type MessageId } from '@deepseek-ai/dsh-llm'
 import { SessionSeq, type SessionEvent } from '@deepseek-ai/dsh-session'
 import { isAppendSurfaceEvent, isReplacementSurfaceEvent } from '@deepseek-ai/dsh-session/surface'
-import { TOMBSTONE_MODEL, TOMBSTONE_PLUGIN, TOMBSTONE_PROVIDER } from './shared.ts'
+import {
+  SYSTEM_PROMPT_SOURCE_KIND,
+  TOMBSTONE_MODEL,
+  TOMBSTONE_PLUGIN,
+  TOMBSTONE_PROVIDER,
+} from './shared.ts'
 
-export { TOMBSTONE_MODEL, TOMBSTONE_PLUGIN, TOMBSTONE_PROVIDER } from './shared.ts'
+export {
+  SYSTEM_PROMPT_SOURCE_KIND,
+  TOMBSTONE_MODEL,
+  TOMBSTONE_PLUGIN,
+  TOMBSTONE_PROVIDER,
+} from './shared.ts'
 
 export type TurnDeleteErrorCode =
   | 'TARGET_NOT_FOUND'
@@ -39,10 +49,14 @@ type TombstoneEvent = SessionEvent<TombstoneEventType> & {
  *
  * Current kernels write a `system/message` replacement: it is the only surface
  * event type that both cites `sourceEventSeqs` (required to shadow a range) and
- * projects to no wire message (empty system content is dormant). DSH 0.1.5
- * forbids `sourceEventSeqs` on `assistant/message`, so the older tombstone shape
- * is read-only replay compatibility: recognizing it keeps old deletions
- * idempotent and keeps them hidden in the browser.
+ * projects to no wire message (empty system content is dormant). Session format
+ * v4 (DSH 0.2.x) forces `source.kind === "system-prompt"` on every system message
+ * (measured against the real 0.2.0-rc.1 kernel), so on v4 an empty system
+ * replacement is the tombstone by construction; v3 and pre-0.2 tombstones also
+ * carry our identity, which those formats do allow. DSH 0.1.5 forbids
+ * `sourceEventSeqs` on `assistant/message`, so the older tombstone shape is
+ * read-only replay compatibility: recognizing it keeps old deletions idempotent
+ * and keeps them hidden in the browser.
  */
 export function isTurnDeleteEvent(event: SessionEvent): event is TombstoneEvent {
   if (event.type !== 'system/message' && event.type !== 'assistant/message') return false
@@ -51,11 +65,68 @@ export function isTurnDeleteEvent(event: SessionEvent): event is TombstoneEvent 
   if (message.content.length !== 0) return false
   const source = message.source
   if (event.type === 'system/message') {
-    return source.kind === 'plugin' && source.plugin === TOMBSTONE_PLUGIN
+    const stamped = source as { kind: string; plugin?: string }
+    return stamped.kind === SYSTEM_PROMPT_SOURCE_KIND
+      || (stamped.kind === 'plugin' && stamped.plugin === TOMBSTONE_PLUGIN)
   }
   return source.kind === 'model'
     && source.provider === TOMBSTONE_PROVIDER
     && source.model === TOMBSTONE_MODEL
+}
+
+/**
+ * Session format that validates message sources by role instead of by producer.
+ *
+ * Format 4 (DSH 0.2.x) requires `system-prompt` on every `system/message` and
+ * rejects the legacy bare `plugin` kind at admission, while the 0.1.x seed
+ * validator requires exactly the opposite ("seed system/message … message must
+ * have plugin source"). The tombstone therefore has to match the log it lands in.
+ */
+const ROLE_SOURCE_FORMAT = 4
+
+/**
+ * Source stamped on a deletion tombstone for one session format version.
+ *
+ * Format 4+ carries no producer identity: an empty system replacement is the
+ * tombstone by construction. Older logs keep our identity in `source.plugin`,
+ * which their validators demand. Exported for tests and hosts; see
+ * {@link ROLE_SOURCE_FORMAT}.
+ */
+export function tombstoneSource(formatVersion: number | undefined): {
+  kind: string
+  plugin?: string
+} {
+  return formatVersion !== undefined && formatVersion >= ROLE_SOURCE_FORMAT
+    ? { kind: SYSTEM_PROMPT_SOURCE_KIND }
+    : { kind: 'plugin', plugin: TOMBSTONE_PLUGIN }
+}
+
+function sessionFormatVersion(session: unknown): number | undefined {
+  const header = (session as { header?: { version?: unknown } } | null | undefined)?.header
+  const version = header?.version
+  return typeof version === 'number' && Number.isFinite(version) ? version : undefined
+}
+
+/**
+ * Build the deletion tombstone message for one session.
+ *
+ * `createSystemMessage` also changed shape across kernel lines: 0.1.x takes the
+ * plugin name and emits `{ kind: "plugin", plugin }`, 0.2.x takes no plugin and
+ * emits `{ kind: "system-prompt" }`. Both are overridden here, so the source
+ * always matches the session's own format (the message is rebuilt as a plain
+ * object because kernel messages are frozen). The extra argument satisfies the
+ * 0.1.x signature and is ignored by 0.2.x.
+ */
+const createSystemMessageCompat = createSystemMessage as (
+  text: string,
+  plugin?: string,
+) => ReturnType<typeof createSystemMessage>
+
+function createTombstoneMessage(session: unknown): ReturnType<typeof createSystemMessage> {
+  return {
+    ...createSystemMessageCompat('', TOMBSTONE_PLUGIN),
+    source: tombstoneSource(sessionFormatVersion(session)),
+  } as unknown as ReturnType<typeof createSystemMessage>
 }
 
 function eventTurn(event: SessionEvent): number | undefined {
@@ -210,11 +281,13 @@ async function deleteUnderMaintenance(
   signal.throwIfAborted()
   // DSH 0.1.5+ requires `startSeq`/`endSeq` and forbids `sourceEventSeqs` on
   // `assistant/message`; an empty `system/message` is the only carrier that both
-  // cites its sources and projects to no wire message.
+  // cites its sources and projects to no wire message. Session format v4 (DSH
+  // 0.2.x) additionally requires a producer-owned source kind, which
+  // `createTombstoneMessage()` stamps.
   const tombstone = session.append('system/message', {
     turn,
     step: target.data.step,
-    message: createSystemMessage('', TOMBSTONE_PLUGIN),
+    message: createTombstoneMessage(session),
   }, {
     surfaceOp: { op: 'replace', startSeq: firstSeq, endSeq: lastSeq },
     sourceEventSeqs: selected,
